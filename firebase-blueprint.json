@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "sale": {
+      "title": "Sale",
+      "description": "A recorded sale for the ranking",
+      "type": "object",
+      "properties": {
+        "vgv": {
+          "type": "number",
+          "description": "Value of the sale (VGV)"
+        },
+        "brokerName": {
+          "type": "string",
+          "description": "Name of the broker"
+        },
+        "leader": {
+          "type": "string",
+          "description": "Team leader"
+        },
+        "director": {
+          "type": "string",
+          "description": "Director"
+        },
+        "traineeLeader": {
+          "type": "string",
+          "description": "Optional Trainee Leader"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["vgv", "brokerName", "leader", "director", "createdAt"]
+    }
+  },
+  "firestore": {
+    "sales": {
+      "schema": "sale",
+      "description": "Collection of all sales records"
+    }
+  }
+}
