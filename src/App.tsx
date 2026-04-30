@@ -488,13 +488,13 @@ export default function App() {
         .sort((a, b) => b.totalVgv - a.totalVgv || b.count - a.count);
 
       const processedDirRanking = Object.values(dirCounts)
-        .sort((a, b) => b.count - a.count || b.vgv - a.vgv);
+        .sort((a, b) => b.vgv - a.vgv || b.count - a.count);
 
       const processedLeadRanking = Object.values(leaderCounts)
-        .sort((a, b) => b.count - a.count || b.vgv - a.vgv);
+        .sort((a, b) => b.vgv - a.vgv || b.count - a.count);
 
       const processedTraineeRanking = Object.values(traineeLeaderCounts)
-        .sort((a, b) => b.count - a.count || b.vgv - a.vgv);
+        .sort((a, b) => b.vgv - a.vgv || b.count - a.count);
 
       // Handle Notifications & Ranking State
       if (!isInitialLoad.current) {
@@ -860,15 +860,15 @@ export default function App() {
                                   <div className="w-4 flex justify-center scale-90">
                                     {viewMode.includes('series') ? getChangeIcon(item.change) : <Minus size={10} className="text-slate-500" />}
                                   </div>
-                                  <span className={`font-medium tabular-nums text-2xl ${rank <= 3 ? 'text-white' : 'text-slate-500'}`}>
+                                  <span className={`font-medium tabular-nums text-xl ${rank <= 3 ? 'text-white' : 'text-slate-500'}`}>
                                     {rank}º
                                   </span>
                                 </div>
 
                                 <div className="flex-1 px-6 flex flex-col justify-center">
                                   <div className="flex items-center gap-4">
-                                    {isG3 && <Star size={24} fill="currentColor" className={rank === 1 ? 'text-amber-500 shadow-lg' : 'text-brand-light shadow-lg'} />}
-                                    <span className={`font-medium uppercase tracking-tighter truncate max-w-[80vw] ${isG3 ? 'text-4xl text-white' : 'text-3xl text-slate-300'}`}>
+                                    {isG3 && <Star size={20} fill="currentColor" className={rank === 1 ? 'text-amber-500 shadow-lg' : 'text-brand-light shadow-lg'} />}
+                                    <span className={`font-medium uppercase tracking-tighter truncate max-w-[80vw] ${isG3 ? 'text-3xl text-white' : 'text-2xl text-slate-300'}`}>
                                       {item.name}
                                     </span>
                                     {(() => {
@@ -895,7 +895,7 @@ export default function App() {
                                 </div>
 
                                 <div className="w-[400px] px-8 text-right">
-                                  <span className={`font-medium tabular-nums text-glow ${isG3 ? 'text-5xl text-emerald-400' : 'text-4xl text-white'}`}>
+                                  <span className={`font-medium tabular-nums text-glow ${isG3 ? 'text-4xl text-emerald-400' : 'text-3xl text-white'}`}>
                                     {displayVgv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
                                   </span>
                                 </div>
@@ -1056,17 +1056,17 @@ export default function App() {
                     className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-center relative overflow-hidden group hover:bg-white/[0.08] transition-colors"
                   >
                     <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
-                      {idx === 0 ? <Trophy size={16} /> : <Star size={16} />}
+                      {idx === 0 ? <Trophy size={20} /> : <Star size={20} />}
                     </div>
-                    <p className="text-[8px] font-medium text-brand-light uppercase tracking-[0.3em] mb-1">{highlight.label}</p>
-                    <h4 className="text-white font-medium uppercase text-sm truncate pr-4">
+                    <p className="text-[10px] font-medium text-brand-light uppercase tracking-[0.3em] mb-1">{highlight.label}</p>
+                    <h4 className="text-white font-medium uppercase text-base truncate pr-4">
                       {highlight.data?.name || '---'}
                     </h4>
                     <div className="flex justify-between items-baseline mt-1">
-                      <p className="text-[10px] text-slate-500 font-mono">
+                      <p className="text-xs text-slate-500 font-mono">
                         {highlight.data?.count || 0} {highlight.data?.count === 1 ? 'VENDA' : 'VENDAS'}
                       </p>
-                      <p className="text-emerald-400 font-medium text-xs tabular-nums">
+                      <p className="text-emerald-400 font-medium text-sm tabular-nums">
                         {(highlight.data?.totalVgv || highlight.data?.vgv || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
                       </p>
                     </div>
@@ -1167,7 +1167,7 @@ export default function App() {
                   <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest leading-none mb-1">VGV TOTAL CONSOLIDADO</p>
                   <Counter 
                     value={totalVgvSum} 
-                    className="font-display text-5xl leading-none font-medium text-white tabular-nums tracking-tighter text-glow"
+                    className="font-display text-4xl leading-none font-medium text-white tabular-nums tracking-tighter text-glow"
                   />
                 </div>
               </div>
@@ -1241,19 +1241,19 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className={`${isFirst ? 'mt-14' : 'mt-10'} flex flex-col items-center w-full relative z-10`}>
-                            <div className="mb-6 text-center w-full px-4">
-                              <h3 className={`${isFirst ? 'text-5xl' : 'text-3xl'} font-medium text-white uppercase tracking-tight line-clamp-1 leading-none drop-shadow-2xl`}>{user.name}</h3>
+                          <div className={`${isFirst ? 'mt-10' : 'mt-8'} flex flex-col items-center w-full relative z-10`}>
+                            <div className="mb-4 text-center w-full px-4">
+                              <h3 className={`${isFirst ? 'text-4xl' : 'text-2xl'} font-medium text-white uppercase tracking-tight line-clamp-1 leading-none drop-shadow-2xl`}>{user.name}</h3>
                             </div>
 
-                            <div className={`${isFirst ? 'px-6 py-2.5 mb-10' : 'px-4 py-1.5 mb-8'} bg-white/5 border border-white/10 rounded-lg flex items-center gap-2.5 shadow-inner backdrop-blur-sm`}>
-                              <span className={`${isFirst ? 'text-4xl' : 'text-2xl'} text-white font-medium leading-none`}>+{user.count}</span>
-                              <span className={`${isFirst ? 'text-xs' : 'text-[10px]'} font-medium uppercase text-slate-400 tracking-[0.2em]`}>{user.count === 1 ? 'Venda' : 'Vendas'}</span>
+                            <div className={`${isFirst ? 'px-5 py-2 mb-8' : 'px-4 py-1.5 mb-6'} bg-white/5 border border-white/10 rounded-lg flex items-center gap-2.5 shadow-inner backdrop-blur-sm`}>
+                              <span className={`${isFirst ? 'text-3xl' : 'text-xl'} text-white font-medium leading-none`}>+{user.count}</span>
+                              <span className={`${isFirst ? 'text-[10px]' : 'text-[9px]'} font-medium uppercase text-slate-400 tracking-[0.2em]`}>{user.count === 1 ? 'Venda' : 'Vendas'}</span>
                             </div>
 
                             <div className="relative">
-                               <p className={`${isFirst ? 'text-8xl' : 'text-6xl'} font-medium tabular-nums tracking-tighter text-glow ${rankInfo.vgvColor} drop-shadow-[0_0_40px_rgba(0,0,0,0.8)] flex items-baseline gap-2`}>
-                                 <span className={`${isFirst ? 'text-4xl' : 'text-3xl'} opacity-80`}>R$</span>
+                               <p className={`${isFirst ? 'text-7xl' : 'text-5xl'} font-medium tabular-nums tracking-tighter text-glow ${rankInfo.vgvColor} drop-shadow-[0_0_40px_rgba(0,0,0,0.8)] flex items-baseline gap-2`}>
+                                 <span className={`${isFirst ? 'text-3xl' : 'text-2xl'} opacity-80`}>R$</span>
                                  {user.totalVgv.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                </p>
                             </div>
@@ -1287,7 +1287,7 @@ export default function App() {
                             <td className="px-6 lg:px-10 py-4">
                               <div className="flex items-center gap-3 lg:gap-4">
                                 {getChangeIcon(user.change)}
-                                <span className="font-display text-xl lg:text-2xl font-medium text-slate-600 group-hover:text-white transition-colors">
+                                <span className="font-display text-lg lg:text-xl font-medium text-slate-600 group-hover:text-white transition-colors">
                                   #{user.rank}
                                 </span>
                               </div>
@@ -1297,7 +1297,7 @@ export default function App() {
                                 <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl lg:rounded-2xl bg-gradient-to-br from-white/15 to-white/5 text-white flex items-center justify-center font-medium text-base lg:text-lg border border-white/10 shadow-xl">
                                   {user.name.charAt(0)}
                                 </div>
-                                <span className="font-medium text-xl lg:text-3xl text-white uppercase tracking-tighter group-hover:translate-x-1 transition-transform">{user.name}</span>
+                                 <span className="font-medium text-lg lg:text-2xl text-white uppercase tracking-tighter group-hover:translate-x-1 transition-transform">{user.name}</span>
                                 {(() => {
                                   const tier = getTierInfo(user.totalVgv, 'broker');
                                   if (!tier) return null;
@@ -1315,13 +1315,13 @@ export default function App() {
                             <td className="px-6 lg:px-10 py-4">
                                <div className="flex items-baseline gap-1 lg:gap-2">
                                  <span className="text-emerald-500/60 font-medium text-[10px] lg:text-sm">R$</span>
-                                 <span className="font-medium text-xl lg:text-3xl text-emerald-400 tabular-nums text-glow drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]">
+                                 <span className="font-medium text-lg lg:text-2xl text-emerald-400 tabular-nums text-glow drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]">
                                    {user.totalVgv.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                  </span>
                                </div>
                             </td>
                             <td className="px-6 lg:px-10 py-4 text-right">
-                              <span className="font-display text-2xl lg:text-4xl font-medium text-white tabular-nums drop-shadow-md">
+                              <span className="font-display text-xl lg:text-3xl font-medium text-white tabular-nums drop-shadow-md">
                                 {user.count}
                               </span>
                             </td>
