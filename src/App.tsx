@@ -645,8 +645,8 @@ export default function App() {
     if (viewMode === 'form' || viewMode === 'management') return;
 
     const getRotationTime = (mode: ViewMode) => {
-      if (mode === 'ranking') return 120000; // 2 minutes for main dashboard
-      return 10000; // 10 seconds for secondary screens
+      if (mode === 'ranking') return 60000; // 1 minute for main dashboard
+      return 30000; // 30 seconds for secondary screens
     };
 
     const interval = setTimeout(rotateView, getRotationTime(viewMode));
@@ -1028,27 +1028,65 @@ export default function App() {
             />
           </div>
 
-          <div className="flex-1 flex flex-col items-center justify-center relative z-10">
-            <div className="w-full space-y-12">
-              <div className="flex flex-col items-center gap-4 text-center">
-                <h3 className="text-7xl font-medium text-white tabular-nums tracking-tighter leading-none">
+          <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
+            <div className="w-full space-y-8 h-full flex flex-col justify-between">
+              {/* Clock and Date */}
+              <div className="flex flex-col items-center gap-2 text-center shrink-0">
+                <h3 className="text-6xl font-medium text-white tabular-nums tracking-tighter leading-none">
                   {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                 </h3>
-                <p className="text-xl font-medium text-slate-500 tracking-[0.4em] uppercase">
+                <p className="text-sm font-medium text-slate-500 tracking-[0.4em] uppercase">
                   {currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                 </p>
               </div>
 
-              <div className="flex flex-col items-center gap-8">
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-[0_0_50px_rgba(255,255,255,0.1)] ring-8 ring-white/5">
+              {/* Highlights Section */}
+              <div className="grid grid-cols-1 gap-3 py-4 flex-1">
+                {[
+                  { label: 'DESTAQUE CORRETOR', data: ranking[0], type: 'broker' },
+                  { label: 'DESTAQUE LÍDER TRAINEE', data: traineeLeaderRanking[0], type: 'trainee' },
+                  { label: 'DESTAQUE LÍDER', data: leaderRanking[0], type: 'leader' },
+                  { label: 'DESTAQUE DIRETOR', data: directorateRanking[0], type: 'director' }
+                ].map((highlight, idx) => (
+                  <motion.div 
+                    key={highlight.label}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 * idx }}
+                    className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-center relative overflow-hidden group hover:bg-white/[0.08] transition-colors"
+                  >
+                    <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                      {idx === 0 ? <Trophy size={16} /> : <Star size={16} />}
+                    </div>
+                    <p className="text-[8px] font-medium text-brand-light uppercase tracking-[0.3em] mb-1">{highlight.label}</p>
+                    <h4 className="text-white font-medium uppercase text-sm truncate pr-4">
+                      {highlight.data?.name || '---'}
+                    </h4>
+                    <div className="flex justify-between items-baseline mt-1">
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        {highlight.data?.count || 0} {highlight.data?.count === 1 ? 'VENDA' : 'VENDAS'}
+                      </p>
+                      <p className="text-emerald-400 font-medium text-xs tabular-nums">
+                        {(highlight.data?.totalVgv || highlight.data?.vgv || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* QR Code Section */}
+              <div 
+                onClick={() => setViewMode('form')}
+                className="flex flex-col items-center gap-4 shrink-0 pt-4 cursor-pointer group"
+              >
+                <div className="bg-white p-3 rounded-[2rem] shadow-[0_0_50px_rgba(255,255,255,0.1)] ring-4 ring-white/5 group-hover:scale-105 transition-transform">
                    <QRCodeSVG 
                     value={typeof window !== "undefined" ? window.location.origin + window.location.pathname + "?mode=form" : ""} 
-                    size={280}
+                    size={140}
                   />
                 </div>
-                <div className="text-center space-y-2">
-                  <p className="text-sm font-medium text-brand-light uppercase tracking-[0.3em]">REGISTRAR VGV</p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest">APONTE A CÂMERA DO CELULAR</p>
+                <div className="text-center space-y-1">
+                  <p className="text-[10px] font-medium text-brand-light uppercase tracking-[0.3em] group-hover:text-white transition-colors">REGISTRAR VGV</p>
                 </div>
               </div>
             </div>
