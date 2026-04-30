@@ -3,9 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/**
+ * Triggering a new build to resolve deployment policy constraints.
+ */
 import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Target, TrendingUp, Calendar, Medal, Award, Star, FormInput, LayoutDashboard, QrCode, ArrowUp, ArrowDown, Minus, ArrowLeft, Trash2, Crown, Settings, Download, Edit3, X, Save } from 'lucide-react';
+import { Trophy, Target, TrendingUp, Calendar, Medal, Award, Star, FormInput, LayoutDashboard, QrCode, ArrowUp, ArrowDown, Minus, ArrowLeft, Trash2, Crown, Settings, Download, Edit3, X, Save, BarChart3, Users } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
 import { collection, query, orderBy, onSnapshot, limit, getDocs, writeBatch, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -53,6 +56,10 @@ interface Sale {
   director: string;
   traineeLeader?: string;
   createdAt?: any;
+  isShared?: boolean;
+  originalVgv?: number;
+  partnerName?: string;
+  isLeaderSale?: boolean;
 }
 
 export default function App() {
@@ -438,19 +445,21 @@ export default function App() {
         const cleanLeader = rawLeader.trim().toUpperCase();
         const cleanTrainee = rawTrainee.trim().toUpperCase();
         
-        if (!brokerCounts[cleanNameKey]) {
-          brokerCounts[cleanNameKey] = { 
-            name: displayName, 
-            unit: toTitleCase(`${rawLeader} / ${rawDir}`.replace(/^\s*\/?\s*|\s*\/?\s*$/g, '')), 
-            leader: toTitleCase(cleanLeader),
-            director: toTitleCase(cleanDir),
-            traineeLeader: cleanTrainee ? toTitleCase(cleanTrainee) : undefined,
-            count: 0,
-            totalVgv: 0
-          };
+        if (!row.isLeaderSale) {
+          if (!brokerCounts[cleanNameKey]) {
+            brokerCounts[cleanNameKey] = { 
+              name: displayName, 
+              unit: toTitleCase(`${rawLeader} / ${rawDir}`.replace(/^\s*\/?\s*|\s*\/?\s*$/g, '')), 
+              leader: toTitleCase(cleanLeader),
+              director: toTitleCase(cleanDir),
+              traineeLeader: cleanTrainee ? toTitleCase(cleanTrainee) : undefined,
+              count: 0,
+              totalVgv: 0
+            };
+          }
+          brokerCounts[cleanNameKey].count++;
+          brokerCounts[cleanNameKey].totalVgv += vgvValue;
         }
-        brokerCounts[cleanNameKey].count++;
-        brokerCounts[cleanNameKey].totalVgv += vgvValue;
 
         if (!dirCounts[cleanDir]) {
           dirCounts[cleanDir] = { name: toTitleCase(cleanDir), count: 0, vgv: 0 };
@@ -505,15 +514,24 @@ export default function App() {
 
           if (trulyNewest) {
             const brokerName = toTitleCase(trulyNewest.brokerName);
-            setNewBooking({
-              name: brokerName,
-              team: toTitleCase(trulyNewest.leader || 'Equipe Principal'),
-              vgv: trulyNewest.vgv || 0
-            });
-            setShowPopup(true);
-            playSuccessSound(); 
-            setTimeout(() => setShowPopup(false), 8000);
-            addNotification(`🚀 VENDA! ${brokerName} tá imparável!`, 'rank');
+            
+            // Only show popup/notif for regular broker sales (not leader sales)
+            if (!trulyNewest.isLeaderSale) {
+              setNewBooking({
+                name: brokerName,
+                team: toTitleCase(trulyNewest.leader || 'Equipe Principal'),
+                vgv: trulyNewest.vgv || 0,
+                isShared: trulyNewest.isShared || false,
+                partnerName: trulyNewest.partnerName ? toTitleCase(trulyNewest.partnerName) : undefined
+              });
+              setShowPopup(true);
+              playSuccessSound(); 
+              setTimeout(() => setShowPopup(false), 8000);
+              addNotification(`🚀 VENDA! ${brokerName} tá imparável!`, 'rank');
+            } else {
+              // Just a silent notification OR nothing
+              console.log('Leader sale - hidden from broker ranking and popup');
+            }
           }
           
           // Update known IDs
@@ -663,7 +681,7 @@ export default function App() {
       <div className="min-h-screen bg-[#F0F2F5] flex items-center justify-center font-sans">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-brand-dark font-black tracking-widest uppercase text-sm">Carregando Ranking...</p>
+          <p className="text-brand-dark font-medium tracking-widest uppercase text-sm">Carregando Ranking...</p>
         </div>
       </div>
     );
@@ -709,7 +727,8 @@ export default function App() {
   const formUrl = typeof window !== 'undefined' ? `${window.location.origin}?mode=form` : '';
 
   return (
-    <div className="h-screen flex flex-col bg-[#F0F2F5] font-sans overflow-hidden relative">
+    <div className="h-screen flex flex-col font-sans overflow-hidden relative bg-transparent">
+      <div className="absolute inset-0 bg-dot-pattern opacity-30 pointer-events-none" />
       {/* AUDIO ELEMENT FOR SALES */}
       <audio 
         id="venda-audio" 
@@ -735,10 +754,10 @@ export default function App() {
                 {notif.type === 'meta' ? <Award size={20} /> : <TrendingUp size={20} />}
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-60">
+                <p className="text-[10px] font-medium uppercase tracking-widest opacity-60">
                   {notif.type === 'meta' ? 'META ALCANÇADA' : 'ATUALIZAÇÃO DE RANKING'}
                 </p>
-                <p className="text-sm font-black uppercase tracking-tighter">{notif.text}</p>
+                <p className="text-sm font-semibold uppercase tracking-tighter">{notif.text}</p>
               </div>
             </motion.div>
           ))}
@@ -752,27 +771,29 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-brand-dark p-4 lg:p-6 overflow-hidden flex flex-col"
+            className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-3xl p-4 lg:p-6 overflow-hidden flex flex-col"
           >
-             <div className="mb-6 flex justify-between items-end">
+             <div className="absolute inset-0 bg-dot-pattern opacity-10 pointer-events-none" />
+             
+             <div className="mb-6 flex justify-between items-end relative z-10">
                 <div className="flex items-center gap-6">
-                   <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center p-2.5 shadow-2xl">
+                   <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center p-2.5 shadow-[0_0_30px_rgba(255,255,255,0.2)]">
                      <img src="https://morarbempe.com.br/wp-content/uploads/2023/06/logofull-600x163.png" alt="Morar Bem" className="w-full grayscale brightness-0" />
                    </div>
                    <div>
-                     <h2 className="text-white font-black text-4xl uppercase tracking-tighter leading-none mb-1">
+                     <h2 className="text-white font-medium text-4xl uppercase tracking-tighter leading-none mb-1">
                        {viewMode === 'series-a' ? 'BRASILEIRÃO - SÉRIE A' : 
                         viewMode === 'series-b' ? 'SÉRIE B - ACESSO' :
                         viewMode === 'ranking-directorate' ? 'RANKING DIRETORIAS' : 
                         viewMode === 'ranking-leader' ? 'RANKING LÍDERES' : 'RANKING LÍDERES TRAINEE'}
                      </h2>
-                     <p className="text-brand-light font-black uppercase tracking-[0.3em] text-[10px]">
+                     <p className="text-brand-light font-medium uppercase tracking-[0.3em] text-[10px]">
                        {viewMode.includes('ranking') ? 'LIDERANÇA • SISTEMA HUB NOGUEIRA' : 'ELITE DOS CORRETORES • SISTEMA HUB NOGUEIRA'}
                      </p>
                    </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-white/20 font-black uppercase tracking-widest text-[8px] mb-0.5">SISTEMA HUB</p>
+                  <p className="text-white/20 font-medium uppercase tracking-widest text-[8px] mb-0.5">SISTEMA HUB</p>
                   <p className="text-white font-mono text-lg">{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
              </div>
@@ -781,9 +802,9 @@ export default function App() {
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2 }}
-                className="flex-1 bg-white rounded-[32px] shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10 overflow-hidden flex flex-col"
+                className="flex-1 glass-card rounded-[32px] shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10 overflow-hidden flex flex-col relative z-10"
              >
-                <div className="flex-1 flex flex-col overflow-hidden divide-y divide-slate-100">
+                <div className="flex-1 flex flex-col overflow-hidden divide-y divide-white/5">
                   {(() => {
                     const data = (viewMode === 'series-a' ? seriesA : 
                                  viewMode === 'series-b' ? seriesB : 
@@ -797,18 +818,18 @@ export default function App() {
                     return (
                       <div className="flex-1 flex flex-col overflow-hidden">
                         {/* Header */}
-                        <div className="bg-white border-b border-slate-100 shadow-sm flex shrink-0 items-center">
-                          <div className={`px-8 ${isSecondaryRanking ? 'py-5 text-[11px]' : 'py-3 text-[10px]'} font-black text-slate-400 uppercase tracking-[0.2em] w-[140px]`}>Posição</div>
-                          <div className={`px-6 ${isSecondaryRanking ? 'py-5 text-[11px]' : 'py-3 text-[10px]'} font-black text-slate-400 uppercase tracking-[0.2em] flex-1`}>
+                        <div className="bg-white/5 border-b border-white/5 backdrop-blur-md flex shrink-0 items-center">
+                          <div className={`px-8 ${isSecondaryRanking ? 'py-5 text-[11px]' : 'py-3 text-[10px]'} font-medium text-slate-500 uppercase tracking-[0.2em] w-[140px]`}>Posição</div>
+                          <div className={`px-6 ${isSecondaryRanking ? 'py-5 text-[11px]' : 'py-3 text-[10px]'} font-medium text-slate-500 uppercase tracking-[0.2em] flex-1`}>
                             {viewMode === 'ranking-directorate' ? 'Diretoria' : viewMode === 'ranking-leader' ? 'Líder / Equipe' : viewMode === 'ranking-trainee-leader' ? 'Líder Trainee' : 'Consultor'}
                           </div>
-                          <div className={`px-8 ${isSecondaryRanking ? 'py-5 text-[11px]' : 'py-3 text-[10px]'} font-black text-slate-400 uppercase tracking-[0.2em] w-[300px] text-right`}>
+                          <div className={`px-8 ${isSecondaryRanking ? 'py-5 text-[11px]' : 'py-3 text-[10px]'} font-medium text-slate-500 uppercase tracking-[0.2em] w-[400px] text-right`}>
                             VGV Confirmado
                           </div>
                         </div>
 
                         {/* Body - Flex container to stretch rows */}
-                        <div className="flex-1 flex flex-col divide-y divide-slate-50 overflow-hidden">
+                        <div className="flex-1 flex flex-col divide-y divide-white/5 overflow-hidden">
                           {data.map((item, idx) => {
                             const rank = idx + 1;
                             const isG3 = (viewMode === 'series-a' || viewMode.includes('ranking')) && rank <= 3;
@@ -816,11 +837,14 @@ export default function App() {
                             const isZ2 = viewMode === 'series-a' && rank > 8;
                             const isPromotion = viewMode === 'series-b' && rank <= 4;
 
-                            let highlightColor = "";
-                            if (isG3) highlightColor = "border-l-[6px] border-amber-500 bg-amber-50/10";
-                            else if (isG7) highlightColor = "border-l-[6px] border-brand-blue bg-blue-50/10";
-                            else if (isZ2) highlightColor = "border-l-[6px] border-rose-400 bg-rose-50/10";
-                            else if (isPromotion) highlightColor = "border-l-[6px] border-emerald-400 bg-emerald-50/10";
+                            let glowClass = "";
+                            if (isG3) {
+                              if (rank === 1) glowClass = "border-l-[6px] border-amber-500 bg-amber-500/5 neon-glow-gold";
+                              else glowClass = "border-l-[6px] border-brand-light bg-brand-light/5 neon-glow-blue";
+                            }
+                            else if (isG7) glowClass = "border-l-[6px] border-brand-blue bg-blue-500/5";
+                            else if (isZ2) glowClass = "border-l-[6px] border-rose-500 bg-rose-500/5";
+                            else if (isPromotion) glowClass = "border-l-[6px] border-emerald-500 bg-emerald-500/5";
 
                             const displayVgv = viewMode.includes('ranking') ? item.vgv : item.totalVgv;
 
@@ -830,21 +854,21 @@ export default function App() {
                                 initial={{ x: -10, opacity: 0 }}
                                 animate={{ x: 0, opacity: 1 }}
                                 transition={{ delay: 0.1 * idx }}
-                                className={`flex-1 flex items-center px-2 transition-all ${highlightColor}`}
+                                className={`flex-1 flex items-center px-2 transition-all ${glowClass}`}
                               >
                                 <div className="w-[140px] px-6 flex items-center gap-3">
                                   <div className="w-4 flex justify-center scale-90">
-                                    {viewMode.includes('series') ? getChangeIcon(item.change) : <Minus size={10} className="text-slate-200" />}
+                                    {viewMode.includes('series') ? getChangeIcon(item.change) : <Minus size={10} className="text-slate-500" />}
                                   </div>
-                                  <span className={`font-black tabular-nums text-2xl ${rank <= 3 ? 'text-brand-dark' : 'text-slate-400'}`}>
+                                  <span className={`font-medium tabular-nums text-2xl ${rank <= 3 ? 'text-white' : 'text-slate-500'}`}>
                                     {rank}º
                                   </span>
                                 </div>
 
                                 <div className="flex-1 px-6 flex flex-col justify-center">
-                                  <div className="flex items-center gap-3">
-                                    {isG3 && <Star size={24} fill="currentColor" className="text-amber-500 shrink-0" />}
-                                    <span className={`font-black uppercase tracking-tighter truncate max-w-[80vw] ${isG3 ? 'text-4xl text-brand-dark' : 'text-3xl text-slate-700'}`}>
+                                  <div className="flex items-center gap-4">
+                                    {isG3 && <Star size={24} fill="currentColor" className={rank === 1 ? 'text-amber-500 shadow-lg' : 'text-brand-light shadow-lg'} />}
+                                    <span className={`font-medium uppercase tracking-tighter truncate max-w-[80vw] ${isG3 ? 'text-4xl text-white' : 'text-3xl text-slate-300'}`}>
                                       {item.name}
                                     </span>
                                     {(() => {
@@ -855,7 +879,7 @@ export default function App() {
                                       );
                                       if (!tier) return null;
                                       return (
-                                        <span className={`text-[10px] font-black px-4 py-1.5 rounded-full shrink-0 ${tier.color}`}>
+                                        <span className={`text-[10px] font-medium px-4 py-1.5 rounded-full shrink-0 ${tier.color}`}>
                                           {tier.label}
                                         </span>
                                       );
@@ -863,15 +887,15 @@ export default function App() {
                                   </div>
                                   {!isSecondaryRanking && (
                                     <div className="flex items-center gap-2 mt-1">
-                                      <span className="text-sm font-black text-slate-400 uppercase tracking-tighter">
+                                      <span className="text-sm font-medium text-slate-500 uppercase tracking-tighter">
                                         {item.leader ? `LDR: ${item.leader}` : ''} {item.director ? ` • DIR: ${item.director}` : ''}
                                       </span>
                                     </div>
                                   )}
                                 </div>
 
-                                <div className="w-[300px] px-8 text-right">
-                                  <span className={`font-black tabular-nums ${isG3 ? 'text-4xl text-emerald-600' : 'text-3xl text-brand-dark'}`}>
+                                <div className="w-[400px] px-8 text-right">
+                                  <span className={`font-medium tabular-nums text-glow ${isG3 ? 'text-5xl text-emerald-400' : 'text-4xl text-white'}`}>
                                     {displayVgv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
                                   </span>
                                 </div>
@@ -884,20 +908,20 @@ export default function App() {
                   })()}
                 </div>
 
-                <div className="bg-slate-50 px-8 py-4 border-t border-slate-200 flex justify-between items-center text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 shrink-0">
+                <div className="bg-black/40 px-8 py-4 border-t border-white/10 flex justify-between items-center text-[9px] font-medium uppercase tracking-[0.2em] text-slate-500 shrink-0 backdrop-blur-md">
                   <div className="flex gap-8">
-                    <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-amber-500" /> G3 (LIBERTADORES)</span>
+                    <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]" /> G3 (LIBERTADORES)</span>
                     {!viewMode.includes('ranking') && (
                       <>
-                        <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-brand-blue" /> G7 (SUDAMERICANA)</span>
-                        {viewMode === 'series-a' && <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-rose-400" /> REBAIXAMENTO</span>}
-                        {viewMode === 'series-b' && <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> ACESSO (Z4)</span>}
+                        <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-brand-light shadow-[0_0_10px_rgba(59,130,246,0.5)]" /> G7 (SUDAMERICANA)</span>
+                        {viewMode === 'series-a' && <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]" /> REBAIXAMENTO</span>}
+                        {viewMode === 'series-b' && <span className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" /> ACESSO (Z4)</span>}
                       </>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-brand-dark">{viewMode.includes('ranking') ? 'LIDERANÇA' : 'TV BRASILEIRÃO'} • MORAR BEM</span>
-                    <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
+                    <span className="text-brand-light">{viewMode.includes('ranking') ? 'LIDERANÇA' : 'TV BRASILEIRÃO'} • MORAR BEM</span>
+                    <div className="w-1.5 h-1.5 bg-brand-light rounded-full animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
                   </div>
                 </div>
              </motion.div>
@@ -915,17 +939,18 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-brand-dark/95 backdrop-blur-xl"
+            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-[20px]"
           >
             <motion.div 
               initial={{ scale: 0.5, y: 100, rotate: -5 }}
               animate={{ scale: 1, y: 0, rotate: 0 }}
               exit={{ scale: 0.5, opacity: 0 }}
-              className="relative bg-white rounded-[40px] p-12 max-w-2xl w-full text-center shadow-[0_0_100px_rgba(255,255,255,0.2)] border-t-[12px] border-brand-blue"
+              className="relative glass-card rounded-[40px] p-12 max-w-2xl w-full text-center shadow-[0_0_100px_rgba(59,130,246,0.3)] border-t-[12px] border-brand-light neon-glow-blue"
             >
               <div className="absolute -top-24 left-1/2 -translate-x-1/2">
-                <div className="w-48 h-48 bg-brand-blue rounded-full flex items-center justify-center shadow-2xl border-8 border-white">
-                  <TrendingUp size={80} className="text-white" />
+                <div className="w-48 h-48 bg-brand-blue rounded-full flex items-center justify-center shadow-2xl border-8 border-slate-900 overflow-hidden relative group">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-brand-blue to-white/20 animate-pulse" />
+                  <TrendingUp size={80} className="text-white relative z-10" />
                 </div>
               </div>
 
@@ -935,13 +960,20 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
                 >
-                  <span className="bg-brand-dark text-white px-6 py-2 rounded-full font-black text-sm uppercase tracking-[0.3em] inline-block mb-4">
+                  <span className="bg-brand-light text-brand-dark px-6 py-2 rounded-full font-medium text-sm uppercase tracking-[0.3em] inline-block mb-4 shadow-[0_0_20px_rgba(96,165,250,0.4)]">
                     🔥 BROCOU! VENDEU! 🔥
                   </span>
-                  <h2 className="text-6xl font-black text-brand-dark uppercase leading-[0.9] tracking-tighter mb-2">
-                    {newBooking.name}
+                  <h2 className="text-6xl font-medium text-white uppercase leading-[0.9] tracking-tighter mb-2 text-glow">
+                    {newBooking.isShared && newBooking.partnerName ? `${newBooking.name} & ${newBooking.partnerName}` : newBooking.name}
                   </h2>
-                  <div className="flex items-center justify-center gap-2 text-brand-light font-display text-2xl font-black uppercase">
+                  {newBooking.isShared && (
+                    <div className="mb-4">
+                      <span className="bg-white/10 text-brand-light border border-brand-light/30 px-4 py-1 rounded-full text-[10px] font-medium uppercase tracking-[0.2em] backdrop-blur-md">
+                        🤝 Venda em Parceria 50/50
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-center gap-2 text-brand-light font-display text-2xl font-medium uppercase">
                     <Star fill="currentColor" size={24} />
                     {newBooking.team}
                     <Star fill="currentColor" size={24} />
@@ -952,12 +984,17 @@ export default function App() {
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ delay: 0.4 }}
-                  className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-8 mt-8"
+                  className="bg-white/5 border-2 border-dashed border-white/10 rounded-3xl p-8 mt-8"
                 >
-                  <p className="text-slate-400 font-black uppercase text-xs tracking-[0.2em] mb-2">VGV (VALOR):</p>
-                  <p className="text-5xl font-black text-emerald-600 uppercase tracking-tight">
+                  <p className="text-slate-500 font-medium uppercase text-xs tracking-[0.2em] mb-2">{newBooking.isShared ? 'SEU VGV (50%):' : 'VGV (VALOR):'}</p>
+                  <p className="text-5xl font-medium text-emerald-400 uppercase tracking-tight text-glow">
                     {newBooking.vgv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </p>
+                  {newBooking.isShared && (
+                    <p className="mt-2 text-[10px] font-medium text-slate-500 uppercase tracking-widest">
+                      VALOR TOTAL DA VENDA: {(newBooking.vgv * 2).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                  )}
                 </motion.div>
 
                 <motion.div
@@ -966,212 +1003,91 @@ export default function App() {
                   transition={{ delay: 0.6 }}
                   className="pt-6"
                 >
-                  <p className="text-brand-dark font-black text-xl italic uppercase">"Sente o cheiro da comissão! BORA VENDER!"</p>
+                  <p className="text-white font-medium text-xl italic uppercase font-display opacity-80">"Sente o cheiro da comissão! BORA VENDER!"</p>
                 </motion.div>
-              </div>
-              
-              <div className="absolute bottom-0 right-0 p-4 opacity-10">
-                <TrendingUp size={120} className="text-brand-dark" />
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className={`flex-1 w-full p-2 lg:p-4 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 overflow-hidden relative z-10 transition-all duration-700 ${(viewMode === 'series-a' || viewMode === 'series-b' || viewMode === 'ranking-directorate' || viewMode === 'ranking-leader') ? 'blur-2xl opacity-0 scale-95' : 'blur-0 opacity-100 scale-100'}`}>
+      <div className={`flex-1 w-full p-2 lg:p-3 grid grid-cols-1 lg:grid-cols-[20%_1fr] gap-3 overflow-hidden relative z-10 transition-all duration-700 ${(viewMode === 'series-a' || viewMode === 'series-b' || viewMode === 'ranking-directorate' || viewMode === 'ranking-leader') ? 'blur-2xl opacity-0 scale-95' : 'blur-0 opacity-100 scale-100'}`}>
         {/* Sidebar */}
         <motion.aside 
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          className="bg-white rounded-[24px] p-5 shadow-xl border-t-[8px] border-brand-dark flex flex-col h-full relative overflow-hidden"
+          className="glass-card rounded-[40px] p-8 flex flex-col h-full relative overflow-hidden shrink-0"
         >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-dark/5 rounded-full -mr-16 -mt-16" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-light/5 rounded-full -mr-16 -mt-16 blur-2xl" />
           
-          <button 
-            onClick={() => setUseMockData(!useMockData)}
-            className="w-full mb-6 relative z-10 group active:scale-95 transition-transform cursor-pointer"
-            title="Alternar Dados Reais/Mock"
-          >
+          <div className="mb-12 relative z-10 px-2 text-center">
             <img 
-              src="https://i.postimg.cc/6p0rCpQr/NASCIMENTO.png" 
+              src="https://i.postimg.cc/Sxr6cxK7/NASCIMENTO-01.png" 
               alt="Nascimento Logo" 
-              className="w-3/4 mx-auto"
+              className="w-full h-auto object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.1)]"
             />
-            {useMockData && (
-              <div className="absolute top-0 right-0 py-1 px-2 bg-brand-blue text-white text-[8px] font-black rounded-lg shadow-lg">
-                MODO SIMULAÇÃO
-              </div>
-            )}
-          </button>
-
-          <div className="space-y-4 relative z-10 flex-1 flex flex-col overflow-hidden">
-            <div className="space-y-2 shrink-0">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Destaques</p>
-              
-              <div className="grid gap-2.5">
-                {[
-                  { label: 'Diretor', data: directorateRanking[0], icon: Award, color: 'text-brand-dark', bg: 'bg-brand-dark', type: 'director' as const },
-                  { label: 'Líder', data: leaderRanking[0], icon: Star, color: 'text-brand-blue', bg: 'bg-slate-50', type: 'leader' as const },
-                  { label: 'Líder Trainee', data: traineeLeaderRanking[0], icon: Medal, color: 'text-orange-500', bg: 'bg-orange-50/50', type: 'leader' as const },
-                  { label: 'Corretor', data: ranking[0], icon: Trophy, color: 'text-amber-500', bg: 'bg-amber-50/50', type: 'broker' as const }
-                ].map((highlight, idx) => {
-                  const tier = highlight.data ? getTierInfo(highlight.type === 'broker' ? highlight.data.totalVgv : highlight.data.vgv, highlight.type) : null;
-                  const isDirector = highlight.type === 'director';
-
-                  return (
-                    <div 
-                      key={idx} 
-                      className={`
-                        ${isDirector ? 'bg-brand-dark border-brand-dark shadow-xl scale-[1.02] -mx-1' : highlight.bg + ' border-slate-100'} 
-                        p-4 rounded-2xl border flex items-center justify-between gap-3 group relative overflow-hidden transition-all hover:scale-[1.05]
-                      `}
-                    >
-                      {isDirector && (
-                        <div className="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full -mr-8 -mt-8" />
-                      )}
-                      
-                      <div className="flex items-center gap-2 relative z-10">
-                        <div className={`
-                          ${isDirector ? 'bg-white/10 text-white' : 'bg-white shadow-sm ' + highlight.color} 
-                          w-10 h-10 rounded-xl flex items-center justify-center shrink-0
-                        `}>
-                          <highlight.icon size={20} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[8px] font-black uppercase tracking-[0.2em] leading-none mb-1 ${isDirector ? 'text-white/40' : 'text-slate-400'}`}>
-                            {highlight.label}
-                          </p>
-                          <p className={`font-black uppercase line-clamp-1 leading-tight ${isDirector ? 'text-base text-white tracking-tighter' : 'text-[14px] text-brand-dark tracking-tight'}`}>
-                            {highlight.data?.name || '---'}
-                          </p>
-                        </div>
-                      </div>
-                      {tier && (
-                        <div className={`px-1.5 py-0.5 rounded-md text-[7px] font-black uppercase text-center shadow-sm relative z-10 ${tier.color}`}>
-                          {tier.label}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* META PROGRESS BLOCK - COMPACTED */}
-            <div className="relative z-10 overflow-hidden flex flex-col shrink-0 mt-2">
-              <div className="bg-brand-dark rounded-[24px] p-4 shadow-2xl relative overflow-hidden border border-white/10 flex items-stretch gap-4 min-h-[160px] group">
-                {/* Background Animation/Glow */}
-                <div className="absolute -top-10 -right-10 w-32 h-32 bg-brand-blue/20 rounded-full blur-3xl group-hover:bg-brand-blue/30 transition-colors" />
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
-
-                {/* Vertical Thermometer - IMPACTFUL FOCUS */}
-                <div className="w-10 h-full bg-white/5 rounded-full border border-white/10 relative overflow-hidden shadow-inner p-1.5 flex flex-col justify-end shrink-0">
-                  <motion.div 
-                    initial={{ height: 0 }}
-                    animate={{ height: `${goalProgress}%` }}
-                    transition={{ duration: 1.5, ease: "easeOut" }}
-                    className="w-full bg-gradient-to-t from-brand-blue via-emerald-400 to-blue-300 rounded-full shadow-[0_0_20px_rgba(59,130,246,0.6)] relative min-h-[12px]"
-                  >
-                    <div className="absolute top-0 left-0 w-full h-full bg-white/20 animate-pulse" />
-                    <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.1)_50%,transparent_75%)] bg-[length:250%_250%] animate-gradient-x" />
-                  </motion.div>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 flex flex-col justify-between py-1 relative z-10">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-1.5 h-1.5 rounded-full bg-brand-blue animate-ping" />
-                      <p className="text-[10px] font-black text-brand-light/60 uppercase tracking-[0.2em]">ETAPA ATUAL</p>
-                    </div>
-                    <h4 className="text-4xl font-black text-white tabular-nums tracking-tighter leading-none">
-                      {Math.floor(goalProgress)}<span className="text-xl text-brand-blue ml-1">%</span>
-                    </h4>
-                  </div>
-
-                  <div className="space-y-3">
-                    {/* Metas Atingidas Badge */}
-                    <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl backdrop-blur-sm">
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conquistas</p>
-                      <div className="flex items-center gap-2">
-                        <div className="bg-emerald-500 text-white text-[9px] font-black px-2.5 py-1 rounded-md uppercase tracking-wider shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-                          {cycleCount - 1} METAS
-                        </div>
-                        <span className="text-[8px] font-bold text-slate-300 uppercase">Atingidas</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-end mb-1">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Faltam</p>
-                        <p className="text-[10px] font-black text-brand-blue tabular-nums">R$ {((cycleGoal - currentCycleVgv) / 1000000).toFixed(1)}M</p>
-                      </div>
-                      <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5">
-                        <motion.div 
-                          className="h-full bg-brand-blue"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${goalProgress}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
-          <div className="mt-auto relative z-10 pt-2 shrink-0">
-            {/* QR CODE SECTION - CLICÁVEL */}
-            <button 
-              onClick={() => setViewMode('form')}
-              className="w-full text-left bg-brand-dark text-white rounded-[32px] p-6 shadow-2xl relative overflow-hidden group hover:scale-[1.02] transition-all active:scale-95 cursor-pointer border border-white/10"
-            >
-              <div className="absolute top-0 right-0 -m-6 opacity-20 group-hover:opacity-30 transition-opacity">
-                <QrCode size={120} />
-              </div>
-              <div className="relative z-10 flex flex-col items-center">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-brand-light">REGISTRAR VENDA</p>
-                <div className="bg-white p-4 rounded-2xl mb-4 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.4)] transition-all">
-                  <QRCodeSVG value={typeof window !== "undefined" ? window.location.origin + window.location.pathname + "?mode=form" : ""} size={180} />
-                </div>
-                <p className="text-[10px] font-bold text-slate-300 text-center uppercase leading-tight tracking-wide">
-                  Aponte a câmera para<br/><span className="text-white font-black">registrar seu VGV</span>
+          <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+            <div className="w-full space-y-12">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <h3 className="text-7xl font-medium text-white tabular-nums tracking-tighter leading-none">
+                  {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </h3>
+                <p className="text-xl font-medium text-slate-500 tracking-[0.4em] uppercase">
+                  {currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                 </p>
               </div>
-            </button>
-          </div>
 
+              <div className="flex flex-col items-center gap-8">
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-[0_0_50px_rgba(255,255,255,0.1)] ring-8 ring-white/5">
+                   <QRCodeSVG 
+                    value={typeof window !== "undefined" ? window.location.origin + window.location.pathname + "?mode=form" : ""} 
+                    size={280}
+                  />
+                </div>
+                <div className="text-center space-y-2">
+                  <p className="text-sm font-medium text-brand-light uppercase tracking-[0.3em]">REGISTRAR VGV</p>
+                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest">APONTE A CÂMERA DO CELULAR</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </motion.aside>
 
         {/* Main Content Area */}
-        <div className="flex flex-col gap-6 overflow-hidden">
+        <div className="flex flex-col gap-4 overflow-hidden h-full">
           
           {/* Header Bar */}
           <motion.header 
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="flex items-center justify-between px-2"
+            className="flex items-center justify-between px-2 shrink-0 h-[100px]"
           >
             <div className="flex items-center gap-6">
               <div className="relative">
-                <div className="w-14 h-14 bg-brand-dark rounded-2xl flex items-center justify-center shadow-lg">
-                  <Trophy className="text-brand-light" size={28} />
+                <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)] ring-1 ring-white/20">
+                  <Trophy className="text-brand-dark" size={28} />
                 </div>
                 <motion.div 
                   animate={{ scale: [1, 1.2, 1] }}
                   transition={{ duration: 2, repeat: Infinity }}
-                  className="absolute -bottom-1 -right-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"
+                  className="absolute -bottom-1 -right-1 bg-brand-light w-3.5 h-3.5 rounded-full border-2 border-brand-dark"
                 />
               </div>
               <div className="flex flex-col">
-                  <h2 className="font-display text-[64px] leading-[0.8] font-black text-brand-dark uppercase tracking-tighter">
-                    {viewMode === 'ranking' ? 'RANKING' : viewMode === 'series-a' ? 'SÉRIE A' : viewMode === 'series-b' ? 'SÉRIE B' : 'REGISTRO'}
+                  <h2 className="font-display text-[64px] leading-[0.8] font-medium text-white uppercase tracking-tighter">
+                    {viewMode === 'ranking' ? (
+                      <>
+                        RANKING <span className="text-brand-light">DE VENDAS</span>
+                      </>
+                    ) : viewMode === 'series-a' ? 'SÉRIE A' : viewMode === 'series-b' ? 'SÉRIE B' : 'REGISTRO'}
                   </h2>
                   <div className="flex items-center gap-3">
-                    <span className="font-display text-[22px] font-extrabold text-brand-light uppercase tracking-tight">
-                      {viewMode === 'form' ? 'GERAL' : 'DE VENDAS'}
+                    <span className="font-display text-[22px] font-semibold text-slate-500 uppercase tracking-tight">
+                      {viewMode === 'ranking' ? 'DESTAQUES DO MÊS =' : viewMode === 'form' ? 'GERAL' : 'DE VENDAS'}
                     </span>
-                  <div className="h-[2px] bg-brand-light flex-1 min-w-[60px]" />
+                  <div className="h-[2px] bg-white/10 flex-1 min-w-[60px]" />
                 </div>
               </div>
             </div>
@@ -1181,7 +1097,7 @@ export default function App() {
                 <div className="flex items-center gap-2 mb-1">
                   <button 
                     onClick={() => setViewMode(viewMode === 'management' ? 'ranking' : 'management')}
-                    className={`text-[8px] font-black px-2 py-0.5 rounded cursor-pointer transition-all shadow-sm ${viewMode === 'management' ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                    className={`text-[8px] font-medium px-2 py-0.5 rounded cursor-pointer transition-all shadow-sm ${viewMode === 'management' ? 'bg-amber-500 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'}`}
                   >
                     {viewMode === 'management' ? 'VOLTAR AO RANKING' : 'GERENCIAR DADOS'}
                   </button>
@@ -1189,14 +1105,14 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={importInitialData}
-                        className="text-[8px] font-black px-2 py-0.5 rounded cursor-pointer bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-all shadow-sm"
+                        className="text-[8px] font-medium px-2 py-0.5 rounded cursor-pointer bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all border border-emerald-500/20"
                         title="Importar dados de exemplo para o banco real"
                       >
                         ADICIONAR DADOS INICIAIS
                       </button>
                       <button 
                         onClick={clearAllSales}
-                        className={`text-[8px] font-black px-2 py-0.5 rounded cursor-pointer transition-all shadow-sm ${confirmClear ? 'bg-rose-600 text-white animate-pulse' : 'bg-brand-blue text-white hover:bg-rose-500'}`}
+                        className={`text-[8px] font-medium px-2 py-0.5 rounded cursor-pointer transition-all ${confirmClear ? 'bg-rose-600 text-white animate-pulse' : 'bg-brand-blue/20 text-brand-light border border-brand-blue/20 hover:bg-rose-500 hover:text-white'}`}
                         title="Clique para excluir todas as vendas reais"
                       >
                         {confirmClear ? (isCleaning ? 'APAGANDO...' : 'CONFIRMAR?') : 'LIMPAR TUDO'}
@@ -1204,149 +1120,170 @@ export default function App() {
                     </div>
                   )}
                   {useMockData && (
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded bg-slate-200 text-slate-500 shadow-inner">
+                    <span className="text-[8px] font-medium px-2 py-0.5 rounded bg-amber-500/20 text-amber-500 border border-amber-500/20">
                       DADOS: SIMULADOS
                     </span>
                   )}
                 </div>
-                <Counter 
-                  value={totalVgvSum} 
-                  className="font-display text-5xl leading-none font-black text-brand-dark tabular-nums tracking-tighter"
-                />
+                <div className="flex flex-col items-end">
+                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest leading-none mb-1">VGV TOTAL CONSOLIDADO</p>
+                  <Counter 
+                    value={totalVgvSum} 
+                    className="font-display text-5xl leading-none font-medium text-white tabular-nums tracking-tighter text-glow"
+                  />
+                </div>
               </div>
             </div>
           </motion.header>
 
-          <main className="flex-1 overflow-hidden">
+          <main className="flex-1 overflow-hidden flex flex-col">
             {viewMode === 'ranking' ? (
-              <div className="grid grid-rows-[340px_1fr] gap-6 h-full overflow-hidden">
-                <section className="grid grid-cols-3 gap-4 px-4 items-stretch py-4">
+              <div className="flex flex-col flex-1 overflow-hidden pt-0 gap-2">
+                <section className="flex flex-col lg:flex-row justify-center items-end gap-6 lg:gap-14 px-4 lg:px-12 pt-20 lg:pt-28 pb-0 overflow-visible shrink-0">
                   <AnimatePresence mode="popLayout">
                     {displayPodium.map((user) => {
                       const actualRank = user === podium[0] ? 1 : user === podium[1] ? 2 : 3;
                       const isFirst = actualRank === 1;
 
-                      const rankInfo = {
-                        1: { label: '1', color: 'border-amber-400 bg-white shadow-xl', badge: 'bg-amber-100 text-amber-600 border-amber-200', vgvColor: 'text-amber-500' },
-                        2: { label: '2', color: 'border-slate-100 bg-white shadow-lg', badge: 'bg-slate-100 text-slate-500 border-slate-200', vgvColor: 'text-slate-500' },
-                        3: { label: '3', color: 'border-slate-100 bg-white shadow-lg', badge: 'bg-orange-100 text-orange-600 border-orange-200', vgvColor: 'text-orange-600' }
-                      }[actualRank as 1 | 2 | 3];
+                          const rankInfo = {
+                            1: { 
+                              label: '1', 
+                              color: 'border-yellow-400/60 bg-gradient-to-b from-[#1a1600] to-[#0d0b00] neon-glow-gold', 
+                              badge: 'bg-gradient-to-b from-yellow-200 via-yellow-400 to-yellow-600 text-slate-950 border-white/40 shadow-[0_0_50px_rgba(250,204,21,0.6)] ring-1 ring-white/30', 
+                              vgvColor: 'text-yellow-400', 
+                              glow: 'bg-yellow-400/40',
+                              dimensions: 'w-full max-w-[700px] h-[400px]'
+                            },
+                            2: { 
+                              label: '2', 
+                              color: 'border-slate-400/40 bg-gradient-to-b from-[#0f1115] to-[#050507] neon-glow-silver', 
+                              badge: 'bg-gradient-to-b from-slate-100 via-slate-400 to-slate-600 text-slate-950 border-white/40 shadow-[0_0_30px_rgba(203,213,225,0.4)] ring-1 ring-white/20', 
+                              vgvColor: 'text-white', 
+                              glow: 'bg-slate-400/20',
+                              dimensions: 'w-full max-w-[450px] h-[300px]'
+                            },
+                            3: { 
+                              label: '3', 
+                              color: 'border-orange-600/40 bg-gradient-to-b from-[#150a00] to-[#070300] neon-glow-bronze', 
+                              badge: 'bg-gradient-to-b from-orange-200 via-orange-500 to-orange-800 text-slate-950 border-white/40 shadow-[0_0_30px_rgba(234,88,12,0.4)] ring-1 ring-white/20', 
+                              vgvColor: 'text-orange-400', 
+                              glow: 'bg-orange-600/20',
+                              dimensions: 'w-full max-w-[450px] h-[300px]'
+                            }
+                          }[actualRank as 1 | 2 | 3];
 
                       return (
                         <motion.div
                           key={user.name}
-                          layout
-                          initial={{ y: 30, opacity: 0, scale: 0.9 }}
+                          initial={{ opacity: 0, y: 15 }}
                           animate={{ 
                             y: 0, 
                             opacity: 1, 
-                            scale: isFirst ? 1.05 : 1,
-                            transition: {
-                              type: "spring",
-                              stiffness: 300,
-                              damping: 25
-                            }
+                            scale: 1,
+                            transition: { duration: 0.6, ease: "easeOut" }
                           }}
-                          exit={{ 
-                            y: -30, 
-                            opacity: 0, 
-                            scale: 0.9,
-                            transition: { duration: 0.2 } 
-                          }}
-                          transition={{
-                            layout: { type: "spring", stiffness: 300, damping: 30 }
-                          }}
-                          className={`flex flex-col items-center justify-center p-6 rounded-[32px] border-2 transition-all group relative ${rankInfo.color} ${isFirst ? 'z-10' : 'scale-100'}`}
+                          className={`flex flex-col items-center justify-center p-8 rounded-[40px] border backdrop-blur-3xl group relative overflow-visible ${rankInfo.color} ${isFirst ? 'z-20' : 'z-10'} ${rankInfo.dimensions} shadow-[0_20px_80px_rgba(0,0,0,0.8)]`}
                         >
+                          {/* METALLIC SHINE EFFECT (First Place Only) */}
+                          {isFirst && (
+                             <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
+                               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-200/50 to-transparent" />
+                               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-yellow-400/30 blur-md rounded-full" />
+                             </div>
+                          )}
+
+                          {/* LARGE LIGHT BURST SPREAD */}
+                          <div className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 ${rankInfo.glow} rounded-full blur-[120px] opacity-60 pointer-events-none z-0`} />
+                          
                           {/* Rank Circle Badge */}
-                          <div className={`w-16 h-16 rounded-full border-4 ${rankInfo.badge} flex items-center justify-center font-black text-2xl mb-6 shadow-sm relative shrink-0`}>
-                            {rankInfo.label}
-                            {isFirst && (
-                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-amber-500 drop-shadow-lg">
-                                <Crown size={32} fill="currentColor" />
-                              </div>
-                            )}
+                          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
+                            <div className={`${isFirst ? 'w-32 h-32 text-7xl' : 'w-24 h-24 text-5xl'} rounded-full border-2 ${rankInfo.badge} flex items-center justify-center font-medium shadow-[0_10px_40px_rgba(0,0,0,0.8)] ring-8 ring-[#050507]/90 relative overflow-hidden`}>
+                              <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent pointer-events-none" />
+                              {rankInfo.label}
+                            </div>
                           </div>
 
-                          {/* Name and Team */}
-                          <div className="mb-4 text-center">
-                            <h3 className="text-2xl font-black text-brand-dark uppercase tracking-tight line-clamp-1">{user.name}</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                              {user.leader} • {user.directorate}
-                            </p>
-                          </div>
+                          <div className={`${isFirst ? 'mt-14' : 'mt-10'} flex flex-col items-center w-full relative z-10`}>
+                            <div className="mb-6 text-center w-full px-4">
+                              <h3 className={`${isFirst ? 'text-5xl' : 'text-3xl'} font-medium text-white uppercase tracking-tight line-clamp-1 leading-none drop-shadow-2xl`}>{user.name}</h3>
+                            </div>
 
-                          {/* Info Box (+ sales) */}
-                          <div className="bg-brand-blue/5 border-2 border-brand-blue/20 rounded-2xl p-3 flex flex-col items-center justify-center min-w-[100px] mb-6 group-hover:scale-110 transition-transform">
-                            <span className="text-brand-blue text-2xl font-black leading-none">+{user.count}</span>
-                            <span className="text-brand-blue text-[9px] font-black uppercase mt-1">Vendas</span>
-                          </div>
+                            <div className={`${isFirst ? 'px-6 py-2.5 mb-10' : 'px-4 py-1.5 mb-8'} bg-white/5 border border-white/10 rounded-lg flex items-center gap-2.5 shadow-inner backdrop-blur-sm`}>
+                              <span className={`${isFirst ? 'text-4xl' : 'text-2xl'} text-white font-medium leading-none`}>+{user.count}</span>
+                              <span className={`${isFirst ? 'text-xs' : 'text-[10px]'} font-medium uppercase text-slate-400 tracking-[0.2em]`}>{user.count === 1 ? 'Venda' : 'Vendas'}</span>
+                            </div>
 
-                          {/* VGV Value */}
-                          <p className={`text-3xl font-black tabular-nums tracking-tighter ${rankInfo.vgvColor}`}>
-                             {user.totalVgv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-                          </p>
+                            <div className="relative">
+                               <p className={`${isFirst ? 'text-8xl' : 'text-6xl'} font-medium tabular-nums tracking-tighter text-glow ${rankInfo.vgvColor} drop-shadow-[0_0_40px_rgba(0,0,0,0.8)] flex items-baseline gap-2`}>
+                                 <span className={`${isFirst ? 'text-4xl' : 'text-3xl'} opacity-80`}>R$</span>
+                                 {user.totalVgv.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                               </p>
+                            </div>
+                          </div>
                         </motion.div>
                       );
                     })}
                   </AnimatePresence>
                 </section>
 
-                <section ref={tableContainerRef} className="bg-white rounded-[24px] shadow-2xl border border-slate-200 overflow-hidden flex flex-col mb-4">
-                  <div className="overflow-hidden h-full scrollbar-none">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b-2 border-slate-100">
+                <section ref={tableContainerRef} className="glass-card rounded-[32px] shadow-[0_30px_100px_rgba(0,0,0,0.9)] border border-white/10 overflow-hidden flex flex-col mb-4 mx-0 flex-1">
+                  <div className="overflow-y-auto h-full scrollbar-none">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
+                      <thead className="sticky top-0 bg-[#0a0a0f]/90 backdrop-blur-3xl z-20 border-b border-white/10">
                         <tr>
-                          <th className="px-8 py-5 font-display text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Posição</th>
-                          <th className="px-8 py-5 font-display text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Consultor</th>
-                          <th className="px-8 py-5 font-display text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Líder / Diretor</th>
-                          <th className="px-8 py-5 font-display text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">VGV Acumulado</th>
-                          <th className="px-8 py-5 font-display text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Vendas</th>
+                          <th className="px-6 lg:px-10 py-6 font-display text-[10px] lg:text-xs font-medium text-slate-500 uppercase tracking-[0.3em]">Posição</th>
+                          <th className="px-6 lg:px-10 py-6 font-display text-[10px] lg:text-xs font-medium text-slate-500 uppercase tracking-[0.3em]">Consultor</th>
+                          <th className="px-6 lg:px-10 py-6 font-display text-[10px] lg:text-xs font-medium text-slate-500 uppercase tracking-[0.3em]">Líder / Diretor</th>
+                          <th className="px-6 lg:px-10 py-6 font-display text-[10px] lg:text-xs font-medium text-slate-500 uppercase tracking-[0.3em]">VGV Acumulado</th>
+                          <th className="px-6 lg:px-10 py-6 font-display text-[10px] lg:text-xs font-medium text-slate-500 uppercase tracking-[0.3em] text-right">Vendas</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-white/5">
                         {list.map((user) => (
                           <motion.tr 
                             key={user.name}
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="hover:bg-slate-50 transition-all group"
+                            className="hover:bg-white/5 transition-all group h-[60px] lg:h-[70px]"
                           >
-                            <td className="px-8 py-4">
-                              <div className="flex items-center gap-3">
+                            <td className="px-6 lg:px-10 py-4">
+                              <div className="flex items-center gap-3 lg:gap-4">
                                 {getChangeIcon(user.change)}
-                                <span className="font-display text-xl font-black text-slate-300 group-hover:text-brand-dark transition-colors">
+                                <span className="font-display text-xl lg:text-2xl font-medium text-slate-600 group-hover:text-white transition-colors">
                                   #{user.rank}
                                 </span>
                               </div>
                             </td>
-                            <td className="px-8 py-4">
-                              <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-brand-dark text-white flex items-center justify-center font-black text-sm shadow-sm">
+                            <td className="px-6 lg:px-10 py-4">
+                              <div className="flex items-center gap-4 lg:gap-6">
+                                <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl lg:rounded-2xl bg-gradient-to-br from-white/15 to-white/5 text-white flex items-center justify-center font-medium text-base lg:text-lg border border-white/10 shadow-xl">
                                   {user.name.charAt(0)}
                                 </div>
-                                <span className="font-black text-2xl text-brand-dark uppercase tracking-tighter">{user.name}</span>
+                                <span className="font-medium text-xl lg:text-3xl text-white uppercase tracking-tighter group-hover:translate-x-1 transition-transform">{user.name}</span>
                                 {(() => {
                                   const tier = getTierInfo(user.totalVgv, 'broker');
                                   if (!tier) return null;
                                   return (
-                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${tier.color}`}>
+                                    <span className={`text-[8px] lg:text-[10px] font-medium px-2 lg:px-3 py-0.5 lg:py-1 rounded-full ${tier.color} shadow-lg`}>
                                       {tier.label}
                                     </span>
                                   );
                                 })()}
                               </div>
                             </td>
-                            <td className="px-8 py-4">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-100 px-3 py-1 rounded-full">{user.unit}</span>
+                            <td className="px-6 lg:px-10 py-4 text-center">
+                              <span className="text-[10px] lg:text-[12px] font-medium text-slate-400 uppercase tracking-widest bg-white/5 px-3 lg:px-4 py-1 lg:py-1.5 rounded-xl border border-white/5 inline-block">{user.unit}</span>
                             </td>
-                            <td className="px-8 py-4">
-                              <span className="font-black text-emerald-600 text-xl tabular-nums">
-                                {user.totalVgv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-                              </span>
+                            <td className="px-6 lg:px-10 py-4">
+                               <div className="flex items-baseline gap-1 lg:gap-2">
+                                 <span className="text-emerald-500/60 font-medium text-[10px] lg:text-sm">R$</span>
+                                 <span className="font-medium text-xl lg:text-3xl text-emerald-400 tabular-nums text-glow drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]">
+                                   {user.totalVgv.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                 </span>
+                               </div>
                             </td>
-                            <td className="px-8 py-4 text-right">
-                              <span className="font-display text-2xl font-black text-brand-dark tabular-nums">
+                            <td className="px-6 lg:px-10 py-4 text-right">
+                              <span className="font-display text-2xl lg:text-4xl font-medium text-white tabular-nums drop-shadow-md">
                                 {user.count}
                               </span>
                             </td>
@@ -1356,52 +1293,71 @@ export default function App() {
                     </table>
                     {ranking.length === 0 && (
                       <div className="p-20 text-center">
-                        <p className="text-slate-400 font-bold uppercase tracking-widest">Nenhuma venda registrada ainda</p>
+                        <p className="text-slate-600 font-medium uppercase tracking-widest">Nenhuma venda registrada ainda</p>
                       </div>
                     )}
                   </div>
                 </section>
+
+                {/* Footer Ticker */}
+                <div className="mt-auto bg-brand-blue/20 border-t border-white/10 backdrop-blur-xl px-12 py-3 flex items-center justify-between overflow-hidden shrink-0">
+                  <div className="flex items-center gap-4 flex-1">
+                    <Trophy size={20} className="text-brand-light animate-bounce" />
+                    <div className="flex gap-4 items-center">
+                       <p className="text-sm font-medium text-white uppercase tracking-widest whitespace-nowrap">PARABÉNS A TODOS OS CORRETORES PELOS RESULTADOS!</p>
+                       <div className="w-1 h-1 rounded-full bg-brand-light/40" />
+                       <div className="flex gap-6 items-center">
+                         {['FOCO', 'DISCIPLINA', 'CONSTÂNCIA', 'RESULTADOS'].map((word, i) => (
+                           <span key={word} className="text-xs font-medium text-slate-400 uppercase tracking-[0.3em] flex items-center gap-6">
+                             {word}
+                             {i < 3 && <div className="w-1 h-1 rounded-full bg-slate-700" />}
+                           </span>
+                         ))}
+                       </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (viewMode === 'ranking-directorate' || viewMode === 'ranking-leader' || viewMode === 'series-a' || viewMode === 'series-b') ? (
               <div className="h-full flex items-center justify-center bg-white/30 rounded-[32px] border-2 border-dashed border-slate-200">
                 <div className="text-center">
                   <LayoutDashboard size={48} className="text-slate-200 mx-auto mb-4" />
-                  <p className="text-slate-400 font-black uppercase tracking-widest italic animate-pulse">Exibindo Rankings na TV...</p>
-                  <p className="text-slate-300 text-[10px] uppercase font-black tracking-tighter mt-2">Pressione ESC para voltar manual (Em breve)</p>
+                  <p className="text-slate-400 font-medium uppercase tracking-widest italic animate-pulse">Exibindo Rankings na TV...</p>
+                  <p className="text-slate-300 text-[10px] uppercase font-medium tracking-tighter mt-2">Pressione ESC para voltar manual (Em breve)</p>
                 </div>
               </div>
             ) : viewMode === 'management' ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-[32px] shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-full"
+                className="glass-card rounded-[32px] shadow-2xl border border-white/5 overflow-hidden flex flex-col h-full"
               >
-                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
                   <div>
-                    <h3 className="text-2xl font-black text-brand-dark uppercase tracking-tighter">Gerenciamento de Vendas</h3>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">Base de Dados Real • Total: {allSales.length} Registros</p>
+                    <h3 className="text-2xl font-medium text-white uppercase tracking-tighter">Gerenciamento de Vendas</h3>
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-widest leading-none mt-1">Base de Dados Real • Total: {allSales.length} Registros</p>
                   </div>
                   <button 
                     onClick={exportToExcel}
-                    className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-2.5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-600/20 active:scale-95"
+                    className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-2.5 rounded-2xl font-medium uppercase text-xs tracking-widest hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-600/20 active:scale-95"
                   >
                     <Download size={18} />
                     Exportar Excel
                   </button>
                 </div>
-                <div className="flex-1 overflow-auto scrollbar-thin">
+                <div className="flex-1 overflow-auto scrollbar-none">
                   <table className="w-full text-left">
-                    <thead className="sticky top-0 bg-white shadow-sm z-10">
+                    <thead className="sticky top-0 bg-slate-900 shadow-sm z-10 border-b border-white/5">
                       <tr>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Consultor</th>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Líderes / Diretor</th>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">VGV</th>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                        <th className="px-8 py-5 text-[10px] font-medium text-slate-500 uppercase tracking-widest">Consultor</th>
+                        <th className="px-8 py-5 text-[10px] font-medium text-slate-500 uppercase tracking-widest">Líderes / Diretor</th>
+                        <th className="px-8 py-5 text-[10px] font-medium text-slate-500 uppercase tracking-widest">VGV</th>
+                        <th className="px-8 py-5 text-[10px] font-medium text-slate-500 uppercase tracking-widest text-right">Ações</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-white/5">
                       {allSales.map((sale) => (
-                        <tr key={sale.id} className="hover:bg-slate-50/50 transition-colors group">
+                        <tr key={sale.id} className="hover:bg-white/5 transition-colors group">
                           <td className="px-8 py-4">
                             {editingSaleId === sale.id ? (
                               <input 
@@ -1413,12 +1369,20 @@ export default function App() {
                                   if (e.key === 'Escape') setEditingSaleId(null);
                                 }}
                                 autoFocus
-                                className="bg-slate-100 border-2 border-brand-blue rounded-lg px-3 py-1 font-black text-brand-dark uppercase w-full"
+                                className="glass-input rounded-lg px-3 py-1 font-medium text-white uppercase w-full"
                               />
                             ) : (
-                              <div className="flex items-center gap-3">
-                                <span className="font-black text-lg text-brand-dark uppercase tracking-tighter">{sale.brokerName}</span>
-                                <button onClick={() => setEditingSaleId(sale.id!)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-brand-blue transition-all">
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-3">
+                                  <span className="font-medium text-lg text-white uppercase tracking-tighter">{sale.brokerName}</span>
+                                  {sale.isShared && (
+                                    <span className="text-[8px] font-medium bg-brand-blue/20 text-brand-light px-2 py-0.5 rounded border border-brand-blue/20">PARCERIA 50%</span>
+                                  )}
+                                  {sale.isLeaderSale && (
+                                    <span className="text-[8px] font-medium bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded border border-amber-500/20">LÍDER / GESTÃO</span>
+                                  )}
+                                </div>
+                                <button onClick={() => setEditingSaleId(sale.id!)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-brand-light transition-all w-fit">
                                   <Edit3 size={14} />
                                 </button>
                               </div>
@@ -1432,25 +1396,25 @@ export default function App() {
                                   defaultValue={sale.leader}
                                   placeholder="Líder"
                                   onBlur={(e) => updateSale(sale.id!, { leader: e.target.value })}
-                                  className="bg-slate-50 border border-slate-200 rounded px-2 py-0.5 text-[10px] font-black uppercase text-slate-600"
+                                  className="glass-input rounded px-2 py-0.5 text-[10px] font-medium uppercase text-white"
                                 />
                                 <input 
                                   type="text"
                                   defaultValue={sale.traineeLeader || ''}
                                   placeholder="Líder Trainee (Opcional)"
                                   onBlur={(e) => updateSale(sale.id!, { traineeLeader: e.target.value })}
-                                  className="bg-orange-50/50 border border-orange-100 rounded px-2 py-0.5 text-[9px] font-black uppercase text-orange-600"
+                                  className="glass-input border-orange-500/20 rounded px-2 py-0.5 text-[9px] font-medium uppercase text-orange-400"
                                 />
                               </div>
                             ) : (
                               <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-black text-slate-500 uppercase">{sale.leader}</span>
+                                  <span className="text-[10px] font-medium text-slate-300 uppercase">{sale.leader}</span>
                                   {sale.traineeLeader && (
-                                    <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded uppercase">{sale.traineeLeader} (Trainee)</span>
+                                    <span className="text-[9px] font-medium bg-orange-400/20 text-orange-400 px-1.5 py-0.5 rounded uppercase border border-orange-400/20">{sale.traineeLeader} (Trainee)</span>
                                   )}
                                 </div>
-                                <span className="text-[8px] font-bold text-slate-400 uppercase">{sale.director}</span>
+                                <span className="text-[8px] font-medium text-slate-500 uppercase">{sale.director}</span>
                               </div>
                             )}
                           </td>
@@ -1464,10 +1428,10 @@ export default function App() {
                                   if (e.key === 'Enter') updateSale(sale.id!, { vgv: parseFloat(e.currentTarget.value) });
                                   if (e.key === 'Escape') setEditingSaleId(null);
                                 }}
-                                className="bg-slate-100 border-2 border-brand-blue rounded-lg px-3 py-1 font-black text-emerald-600 w-full"
+                                className="glass-input rounded-lg px-3 py-1 font-medium text-emerald-400 w-full"
                               />
                             ) : (
-                              <span className="font-black text-emerald-600 tabular-nums">
+                              <span className="font-medium text-emerald-400 tabular-nums text-glow">
                                 {sale.vgv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                               </span>
                             )}
@@ -1478,13 +1442,13 @@ export default function App() {
                                 <div className="flex items-center gap-2">
                                   <button 
                                     onClick={() => deleteSale(sale.id!)}
-                                    className="px-3 py-1 bg-rose-600 text-white rounded-lg font-black text-[10px] uppercase hover:bg-rose-700 transition-all shadow-sm"
+                                    className="px-3 py-1 bg-rose-600 text-white rounded-lg font-medium text-[10px] uppercase hover:bg-rose-700 transition-all shadow-sm"
                                   >
                                     Confirmar
                                   </button>
                                   <button 
                                     onClick={() => setConfirmingDeleteId(null)}
-                                    className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:text-slate-600 transition-all"
+                                    className="p-1.5 rounded-lg bg-white/5 text-slate-500 hover:text-white transition-all"
                                   >
                                     <X size={16} />
                                   </button>
@@ -1492,7 +1456,7 @@ export default function App() {
                               ) : (
                                 <button 
                                   onClick={() => setConfirmingDeleteId(sale.id!)}
-                                  className="p-2.5 rounded-xl bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-all shadow-sm"
+                                  className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all shadow-sm border border-rose-500/20"
                                   title="Excluir Venda"
                                 >
                                   <Trash2 size={18} />
@@ -1518,8 +1482,8 @@ export default function App() {
                       <FormInput className="text-brand-light" size={24} />
                     </div>
                     <div>
-                      <h2 className="text-xl font-black text-brand-dark uppercase tracking-tighter">Registrar Venda</h2>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mt-1">Canal Direto • Hub Nogueira</p>
+                      <h2 className="text-xl font-medium text-brand-dark uppercase tracking-tighter">Registrar Venda</h2>
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest leading-none mt-1">Canal Direto • Hub Nogueira</p>
                     </div>
                   </header>
                   
@@ -1532,37 +1496,6 @@ export default function App() {
           </main>
         </div>
       </div>
-
-      <footer className="h-16 bg-brand-dark flex items-stretch border-t border-white/5 z-[100] flex-shrink-0">
-        <div className="flex-1 flex items-center px-8 overflow-hidden relative">
-          <div className="flex items-center gap-6 text-white font-black italic tracking-widest uppercase text-[13px] whitespace-nowrap">
-            <div className="bg-brand-blue p-2 rounded-lg flex-shrink-0 animate-pulse">
-              <Star className="text-white" size={20} fill="currentColor" />
-            </div>
-            <div className="flex gap-20 animate-marquee-slow">
-              {marketNews.map((news, idx) => (
-                <span key={idx} className="flex-shrink-0 flex items-center gap-4">
-                  {news} <span className="w-2 h-2 rounded-full bg-brand-blue/30" />
-                </span>
-              ))}
-              {marketNews.map((news, idx) => (
-                <span key={`dup-${idx}`} className="flex-shrink-0 flex items-center gap-4">
-                  {news} <span className="w-2 h-2 rounded-full bg-brand-blue/30" />
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-black/40 px-12 flex flex-col justify-center items-center border-l border-white/10 backdrop-blur-md min-w-[200px]">
-          <span className="text-3xl font-black text-white tabular-nums leading-none tracking-tighter">
-            {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <span className="text-[10px] font-black text-brand-light/60 uppercase tracking-[0.3em] mt-1">
-            {currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </span>
-        </div>
-      </footer>
 
       <div className="absolute top-10 right-10 opacity-5 pointer-events-none">
         <Award size={400} strokeWidth={1} />
