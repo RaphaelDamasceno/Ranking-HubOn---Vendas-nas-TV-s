@@ -60,6 +60,7 @@ interface Sale {
   originalVgv?: number;
   partnerName?: string;
   isLeaderSale?: boolean;
+  partnershipCount?: number;
 }
 
 export default function App() {
@@ -522,7 +523,8 @@ export default function App() {
                 team: toTitleCase(trulyNewest.leader || 'Equipe Principal'),
                 vgv: trulyNewest.vgv || 0,
                 isShared: trulyNewest.isShared || false,
-                partnerName: trulyNewest.partnerName ? toTitleCase(trulyNewest.partnerName) : undefined
+                partnerName: trulyNewest.partnerName ? toTitleCase(trulyNewest.partnerName) : undefined,
+                partnershipCount: trulyNewest.partnershipCount || 2
               });
               setShowPopup(true);
               playSuccessSound(); 
@@ -963,13 +965,13 @@ export default function App() {
                   <span className="bg-brand-light text-brand-dark px-6 py-2 rounded-full font-medium text-sm uppercase tracking-[0.3em] inline-block mb-4 shadow-[0_0_20px_rgba(96,165,250,0.4)]">
                     🔥 BROCOU! VENDEU! 🔥
                   </span>
-                  <h2 className="text-6xl font-medium text-white uppercase leading-[0.9] tracking-tighter mb-2 text-glow">
+                  <h2 className="text-6xl font-medium text-white uppercase leading-[0.9] tracking-tighter mb-4 text-glow">
                     {newBooking.isShared && newBooking.partnerName ? `${newBooking.name} & ${newBooking.partnerName}` : newBooking.name}
                   </h2>
                   {newBooking.isShared && (
                     <div className="mb-4">
                       <span className="bg-white/10 text-brand-light border border-brand-light/30 px-4 py-1 rounded-full text-[10px] font-medium uppercase tracking-[0.2em] backdrop-blur-md">
-                        🤝 Venda em Parceria 50/50
+                        🤝 Parceria {newBooking.partnershipCount === 3 ? 'Dividida (33%)' : 'Dividida (50/50)'}
                       </span>
                     </div>
                   )}
@@ -986,13 +988,13 @@ export default function App() {
                   transition={{ delay: 0.4 }}
                   className="bg-white/5 border-2 border-dashed border-white/10 rounded-3xl p-8 mt-8"
                 >
-                  <p className="text-slate-500 font-medium uppercase text-xs tracking-[0.2em] mb-2">{newBooking.isShared ? 'SEU VGV (50%):' : 'VGV (VALOR):'}</p>
+                  <p className="text-slate-500 font-medium uppercase text-xs tracking-[0.2em] mb-2">{newBooking.isShared ? `SEU VGV (${newBooking.partnershipCount === 3 ? '33%' : '50%'}):` : 'VGV (VALOR):'}</p>
                   <p className="text-5xl font-medium text-emerald-400 uppercase tracking-tight text-glow">
                     {newBooking.vgv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </p>
                   {newBooking.isShared && (
                     <p className="mt-2 text-[10px] font-medium text-slate-500 uppercase tracking-widest">
-                      VALOR TOTAL DA VENDA: {(newBooking.vgv * 2).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      VALOR TOTAL DA VENDA: {(newBooking.vgv * (newBooking.partnershipCount || 2)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
                   )}
                 </motion.div>
@@ -1414,7 +1416,9 @@ export default function App() {
                                 <div className="flex items-center gap-3">
                                   <span className="font-medium text-lg text-white uppercase tracking-tighter">{sale.brokerName}</span>
                                   {sale.isShared && (
-                                    <span className="text-[8px] font-medium bg-brand-blue/20 text-brand-light px-2 py-0.5 rounded border border-brand-blue/20">PARCERIA 50%</span>
+                                    <span className="text-[8px] font-medium bg-brand-blue/20 text-brand-light px-2 py-0.5 rounded border border-brand-blue/20">
+                                      PARCERIA {sale.partnershipCount === 3 ? '33%' : '50%'}
+                                    </span>
                                   )}
                                   {sale.isLeaderSale && (
                                     <span className="text-[8px] font-medium bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded border border-amber-500/20">LÍDER / GESTÃO</span>
